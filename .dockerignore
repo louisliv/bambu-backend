@@ -1,0 +1,9 @@
+.git
+.next
+node_modules
+.venv
+venv
+.ruff_cache
+.env
+.github
+dist
