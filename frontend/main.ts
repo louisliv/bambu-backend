@@ -7,8 +7,10 @@ const app = mount(App, {
     target: document.getElementById("app")!,
 });
 
-window.crypto.randomUUID = () => {
-    return uuid4();
-};
+if (window.isSecureContext) {
+    window.crypto.randomUUID = () => {
+        return uuid4();
+    };
+}
 
 export default app;
