@@ -1,29 +1,190 @@
-from pydantic import BaseModel, IPvAnyAddress
 import os
 import re
 from logging import getLogger
-from bambu_connect import BambuClient
+from bambu_connect.CameraClient import CameraClient
+from bambu_connect.utils.models import PrinterStatus
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable, Coroutine
 from typing import Literal, Any
+from uuid import uuid4
+import base64
+
+import ssl
+import asyncio
+from aiomqtt.client import MqttError, Client as MqttClient
+import json
 
 logger = getLogger()
 
 
-class Printer(BaseModel):
+class Printer:
+    subscribers: dict[str, Callable[[dict[str, Any]], Coroutine[Any, Any, None]]]
+    camera_client: CameraClient | None
+    mqtt_client: MqttClient | None
+    printer_status: PrinterStatus | None
+    printer_status_values: dict[str, Any]
+    printer_subscriber_task: asyncio.tasks.Task | None
+
     name: str
-    ip: IPvAnyAddress
+    ip: str
     access_code: str
     serial: str
     model: Literal["P1S"]
+    username: str = "bblp"
+    port: int = 8883
+
+    latest_image: bytes | None = None
+
+    def __init__(
+        self, name: str, ip: str, access_code: str, serial: str, model: Literal["P1S"]
+    ):
+        self.name = name
+        self.ip = ip
+        self.serial = serial
+        self.model = model
+        self.access_code = access_code
+
+        self.subscribers = {}
+        self.camera_client = None
+        self.mqtt_client = None
+        self.printer_status = None
+        self.printer_status_values = {}
+        self.printer_subscriber_task = None
+
+    def get_image_payload(self, image: bytes) -> dict[str, Any]:
+        return {
+            "type": "jpeg_image",
+            "data": base64.b64encode(image).decode("utf-8"),
+        }
+
+    def image_callback(self, image: bytes) -> None:
+        self.latest_image = image
+        payload = self.get_image_payload(image)
+
+        for callback in self.subscribers.values():
+            asyncio.run(callback(payload))
+
+    async def start_printer_subscriber(self):
+        if self.printer_subscriber_task is None or self.printer_subscriber_task.done():
+            self.printer_subscriber_task = asyncio.create_task(
+                self.printer_subscriber()
+            )
+            logger.info("Created new task for %s", self.name)
+
+            def on_done(task):
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    logger.info("Printer subscriber cancelled for %s", self.name)
+                except Exception as e:
+                    logger.exception(
+                        "Printer subscriber failed for %s: %s", self.name, e
+                    )
+
+            self.printer_subscriber_task.add_done_callback(on_done)
+
+    async def start(
+        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+    ) -> None:
+        if not self.subscribers:
+            logger.error("Started Printer Connection without subscribers")
+            return
+
+        if self.camera_client is None:
+            self.camera_client = CameraClient(
+                hostname=self.ip, access_code=self.access_code
+            )
+        if self.camera_client is not None:
+            if self.latest_image:
+                await callback(self.get_image_payload(self.latest_image))
+            self.camera_client.start_stream(self.image_callback)
+
+        if self.mqtt_client is None:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+            ssl_context.verify_mode = ssl.CERT_NONE
+            ssl_context.check_hostname = False
+            self.mqtt_client = MqttClient(
+                hostname=self.ip,
+                username=self.username,
+                password=self.access_code,
+                port=self.port,
+                tls_insecure=True,
+                tls_context=ssl_context,
+            )
+            await self.start_printer_subscriber()
+
+    async def stop(self) -> None:
+        if self.subscribers:
+            return
+
+        if self.camera_client is not None:
+            self.camera_client.stop_stream()
+            self.camera_client = None
+
+        if self.printer_subscriber_task is not None:
+            self.printer_subscriber_task.cancel()
+
+        if self.mqtt_client is not None:
+            self.mqtt_client = None
+
+        logger.info("All tasks for %s stopped", self.name)
+
+    async def printer_subscriber(self) -> None:
+        while True:
+            if self.mqtt_client is None:
+                await asyncio.sleep(0.1)
+                continue
+            try:
+                async with self.mqtt_client as client:
+                    if not self.printer_status_values:
+                        await client.publish(
+                            f"device/{self.serial}/request",
+                            '{"pushing": { "sequence_id": 1, "command": "pushall"}, "user_id":"1234567890"}',
+                        )
+
+                    await client.subscribe(f"device/{self.serial}/report")
+                    async for message in client.messages:
+                        try:
+                            if not isinstance(message.payload, bytes):
+                                logger.error(
+                                    "Printer %s %s sent unexpected %s",
+                                    self.name,
+                                    self.model,
+                                    message.payload,
+                                )
+                                continue
+                            payload = json.loads(message.payload)
+                            self.printer_status_values = dict(
+                                self.printer_status_values, **payload["print"]
+                            )
+
+                            client_payload = {
+                                "type": "printer_status",
+                                "data": self.printer_status_values,
+                            }
+                            for callback in self.subscribers.values():
+                                await callback(client_payload)
+
+                        except KeyError:
+                            logger.error(
+                                "Error while subscribing %s %s", self.name, self.model
+                            )
+                            continue
+            except MqttError:
+                await asyncio.sleep(3)
 
     @asynccontextmanager
-    async def client(self) -> AsyncGenerator[BambuClient, None]:
-        client = BambuClient(str(self.ip), self.access_code, self.serial)
+    async def client(
+        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+    ) -> AsyncGenerator[None, None]:
+        uuid = str(uuid4())
+        self.subscribers[uuid] = callback
+        await self.start(callback)
         try:
-            yield client
+            yield None
         finally:
-            del client
+            del self.subscribers[uuid]
+            await self.stop()
 
 
 def parse_printers_from_env() -> dict[str, Printer]:
