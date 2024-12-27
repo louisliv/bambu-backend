@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import router as api_router
 import logging
 from fastapi.middleware.cors import CORSMiddleware
-from .printer_socket import router as ws_router
+from .printer_ws import router as ws_router
 from fastapi.responses import FileResponse
 
 

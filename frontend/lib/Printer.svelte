@@ -16,9 +16,11 @@
     import { Lightbulb } from "lucide-svelte";
     import { CircleGauge, Activity } from "lucide-svelte";
     import { File, Layers, Clock, Thermometer } from "lucide-svelte";
+    import type { PrinterStatus } from "./printerModel";
 
     import { Label } from "$lib/components/ui/label/index.js";
     import { Switch } from "$lib/components/ui/switch/index.js";
+    import { Logger } from "@dvcol/svelte-simple-router";
 
     const speedModes = ["Silent", "Standard", "Sport", "Ludicrous"];
 
@@ -29,12 +31,23 @@
     let imageUrl = $state<string | null>(null);
     let ws = $state<WebSocket | null>(null);
     let connectionError = $state<string | null>(null);
+    let printerStatus = $state<PrinterStatus | undefined>(undefined);
+    let printerLightOn = $state<boolean>(false);
+
+    // Websocket States
+    let reconnectAttempts = 0;
+    let maxReconnectAttempts = 5;
+    let reconnectTimer: number;
+    let isConnecting = false;
 
     function connect() {
+        if (isConnecting) return;
+        isConnecting = true;
         const backendUrl = getBackendUrl();
         ws = new WebSocket(`${backendUrl}/ws/printer/${printerId}`);
 
         ws.onmessage = (event) => {
+            reconnectAttempts = 0; // Reset on successful message
             const message = JSON.parse(event.data);
             if (message.type === "jpeg_image") {
                 const binaryData = atob(message.data);
@@ -48,18 +61,36 @@
                     URL.revokeObjectURL(imageUrl);
                 }
                 imageUrl = URL.createObjectURL(blob);
+            } else if (message.type === "printer_status") {
+                printerStatus = JSON.parse(message.data) as PrinterStatus;
+                printerLightOn = printerStatus?.lights_report?.[0]?.mode === "on";
             }
         };
 
         ws.onerror = (error) => {
-            connectionError = "Connection error occurred";
+            connectionError = "Connection unexpectedly closed, reconnecting...";
             console.error("WebSocket error:", error);
         };
 
         ws.onclose = (event) => {
+            isConnecting = false;
             if (event.code === 4004) {
                 connectionError = "Invalid printer name";
+                return;
             }
+
+            if (reconnectAttempts < maxReconnectAttempts) {
+                const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                reconnectTimer = setTimeout(() => {
+                    reconnectAttempts++;
+                    connect();
+                }, backoffDelay);
+            }
+        };
+
+        ws.onopen = () => {
+            isConnecting = false;
+            connectionError = null;
         };
     }
 
@@ -74,14 +105,17 @@
         if (imageUrl) {
             URL.revokeObjectURL(imageUrl);
         }
+        clearTimeout(reconnectTimer);
     });
 
-    // placeholders
-    let status = "Printing";
-    let fileName = "Ergo_Vertical_Mouse_V2_Left_and_Right_Handed";
-    let layer = 83;
-    let totalLayers = 631;
-    let timeRemaining = "2h55m";
+    function toggleLight() {
+        ws?.send(
+            JSON.stringify({
+                type: "chamber_light",
+                data: printerStatus?.lights_report?.[0]?.mode === "on" ? false : true,
+            }),
+        );
+    }
 </script>
 
 <div class="grid grid-flow-row-dense auto-rows-min grid-cols-1 gap-4 p-4 md:grid-cols-5">
@@ -106,35 +140,38 @@
                     <!-- File Name -->
                     <div class="flex flex-col items-start">
                         <span class="text-sm text-gray-400"><File /></span>
-                        <span class="text-sm font-medium">{fileName}</span>
+                        <span class="text-sm font-medium">{printerStatus?.gcode_file}</span>
                     </div>
 
                     <!-- Status -->
                     <div class="flex flex-col items-start">
                         <span class="text-sm text-gray-400"><Activity /></span>
-                        <span class="text-sm font-medium">{status}</span>
+                        <span class="text-sm font-medium">{printerStatus?.print_type}</span>
                     </div>
 
                     <!-- Layer Info -->
                     <div class="flex flex-col items-start">
                         <span class="text-sm text-gray-400"><Layers /></span>
-                        <span class="text-sm font-medium">{layer}/{totalLayers}</span>
+                        <span class="text-sm font-medium"
+                            >{printerStatus?.layer_num}/{printerStatus?.total_layer_num}</span
+                        >
                     </div>
 
                     <!-- Time Remaining -->
                     <div class="flex flex-col items-start">
                         <span class="text-sm text-gray-400"><Clock /></span>
-                        <span class="text-sm font-medium">{timeRemaining}</span>
+                        <span class="text-sm font-medium">{printerStatus?.mc_remaining_time}</span>
                     </div>
 
-                    <Progress value={42} max={100} />
+                    <!-- Print Progrss -->
+                    <Progress value={printerStatus?.mc_percent} max={100} />
                 </div>
 
                 <div class="mt-4 flex flex-row items-center justify-between space-x-4">
-                    <h3 class="text-lg">Printing 42%</h3>
-                    <CirclePause />
-                    <CircleStop />
-                    <CirclePlay />
+                    <h3 class="text-lg">Status {printerStatus?.print_type} {printerStatus?.mc_percent}%</h3>
+                    <Button variant="outline" disabled><CirclePause /></Button>
+                    <Button variant="outline" disabled><CircleStop /></Button>
+                    <Button variant="outline" disabled><CirclePlay /></Button>
                 </div>
             </CardContent>
         </Card>
@@ -152,27 +189,27 @@
                         <!-- Y+ Controls -->
                         <div class="flex justify-center">
                             <div class="flex flex-col gap-2">
-                                <Button variant="outline" class="w-16">Y+10</Button>
-                                <Button variant="outline" class="w-16">Y+1</Button>
+                                <Button disabled variant="outline" class="w-16">Y+10</Button>
+                                <Button disabled variant="outline" class="w-16">Y+1</Button>
                             </div>
                         </div>
 
                         <!-- X Controls -->
                         <div class="flex gap-2">
-                            <Button variant="outline" class="w-16">X-10</Button>
-                            <Button variant="outline" class="w-16">X-1</Button>
-                            <Button variant="outline" class="w-16">
+                            <Button disabled variant="outline" class="w-16">X-10</Button>
+                            <Button disabled variant="outline" class="w-16">X-1</Button>
+                            <Button disabled variant="outline" class="w-16">
                                 <Home class="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" class="w-16">X+1</Button>
-                            <Button variant="outline" class="w-16">X+10</Button>
+                            <Button disabled variant="outline" class="w-16">X+1</Button>
+                            <Button disabled variant="outline" class="w-16">X+10</Button>
                         </div>
 
                         <!-- Y- Controls -->
                         <div class="flex justify-center">
                             <div class="flex flex-col gap-2">
-                                <Button variant="outline" class="w-16">Y-1</Button>
-                                <Button variant="outline" class="w-16">Y-10</Button>
+                                <Button disabled variant="outline" class="w-16">Y-1</Button>
+                                <Button disabled variant="outline" class="w-16">Y-10</Button>
                             </div>
                         </div>
                     </div>
@@ -181,18 +218,18 @@
                     <div class="flex gap-8">
                         <!-- Z Controls -->
                         <div class="flex flex-col gap-2">
-                            <Button variant="outline" class="w-16">Z+10</Button>
-                            <Button variant="outline" class="w-16">Z+1</Button>
-                            <Button variant="outline" class="w-16">Z-1</Button>
-                            <Button variant="outline" class="w-16">Z-10</Button>
+                            <Button disabled variant="outline" class="w-16">Z+10</Button>
+                            <Button disabled variant="outline" class="w-16">Z+1</Button>
+                            <Button disabled variant="outline" class="w-16">Z-1</Button>
+                            <Button disabled variant="outline" class="w-16">Z-10</Button>
                         </div>
 
                         <!-- Filament Controls -->
                         <div class="flex flex-col gap-2">
-                            <Button variant="outline" class="w-16">Retract</Button>
-                            <Button variant="outline" class="w-16">Extrude</Button>
-                            <Button variant="outline" class="w-16">Load</Button>
-                            <Button variant="outline" class="w-16">Unload</Button>
+                            <Button disabled variant="outline" class="w-16">Retract</Button>
+                            <Button disabled variant="outline" class="w-16">Extrude</Button>
+                            <Button disabled variant="outline" class="w-16">Load</Button>
+                            <Button disabled variant="outline" class="w-16">Unload</Button>
                         </div>
                     </div>
                 </div>
@@ -205,7 +242,7 @@
                             </div>
                             <span>Normal</span>
                         </div>
-                        <Slider value={[1]} max={3} step={1} class="w-full" />
+                        <Slider disabled value={[1]} max={3} step={1} class="w-full" />
                     </div>
                 </div>
             </CardContent>
@@ -219,22 +256,26 @@
                         <div class="text-400 flex items-center justify-center space-x-2 text-sm">
                             <Thermometer /> Nozzle
                         </div>
-                        <div class="text-center text-xl">42°C</div>
+                        <div class="text-center text-xl">
+                            {Math.round(printerStatus?.nozzle_temper ?? 0)}/{printerStatus?.nozzle_target_temper}°C
+                        </div>
                     </div>
                     <div class="flex flex-col items-center justify-center space-y-1">
                         <div class="text-400 flex items-center justify-center space-x-2 text-sm">
                             <Thermometer /> Bed
                         </div>
-                        <div class="text-center text-xl">24°C</div>
+                        <div class="text-center text-xl">
+                            {Math.round(printerStatus?.bed_temper ?? 0)}/{printerStatus?.bed_target_temper}°C
+                        </div>
                     </div>
                     <div class="flex flex-col items-center justify-center space-y-1">
                         <div class="text-400 flex items-center justify-center space-x-2 text-sm">
                             <Thermometer /> Chamber
                         </div>
-                        <div class="text-center text-xl">23°C</div>
+                        <div class="text-center text-xl">{Math.round(printerStatus?.chamber_temper ?? 0)}°C</div>
                     </div>
                     <div class="flex items-center justify-center space-x-2">
-                        <Switch id="printer-light" />
+                        <Switch id="printer-light" bind:checked={printerLightOn} onCheckedChange={toggleLight} />
                         <Label for="printer-light">
                             <Lightbulb class="h-5 w-5" />
                         </Label>
@@ -248,9 +289,9 @@
                                 <Fan />
                                 Part Cooling
                             </div>
-                            <span>42%</span>
+                            <span>{printerStatus?.cooling_fan_speed}%</span>
                         </div>
-                        <Slider value={[42]} max={100} step={5} class="w-full" />
+                        <Slider disabled value={[42]} max={100} step={5} class="disabled w-full" />
                     </div>
                     <div class="bg-400 rounded-lg p-3">
                         <div class="mb-2 flex justify-between">
@@ -258,9 +299,9 @@
                                 <Fan />
                                 Chamber
                             </div>
-                            <span>42%</span>
+                            <span>{printerStatus?.big_fan1_speed}%</span>
                         </div>
-                        <Slider value={[42]} max={100} step={5} class="w-full" />
+                        <Slider disabled value={[42]} max={100} step={5} class="w-full" />
                     </div>
                     <div class="bg-400 rounded-lg p-3">
                         <div class="mb-2 flex justify-between">
@@ -268,9 +309,9 @@
                                 <Fan />
                                 Auxillary
                             </div>
-                            <span>42%</span>
+                            <span>{printerStatus?.big_fan2_speed}%</span>
                         </div>
-                        <Slider value={[42]} max={100} step={5} class="w-full" />
+                        <Slider disabled value={[42]} max={100} step={5} class="w-full" />
                     </div>
                 </div>
             </CardContent>

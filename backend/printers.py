@@ -51,6 +51,10 @@ class Printer:
         self.printer_status_values = {}
         self.printer_subscriber_task = None
 
+    @property
+    def request_topic(self) -> str:
+        return f"device/{self.serial}/request"
+
     def get_image_payload(self, image: bytes) -> dict[str, Any]:
         return {
             "type": "jpeg_image",
@@ -121,13 +125,7 @@ class Printer:
             self.camera_client.stop_stream()
             self.camera_client = None
 
-        if self.printer_subscriber_task is not None:
-            self.printer_subscriber_task.cancel()
-
-        if self.mqtt_client is not None:
-            self.mqtt_client = None
-
-        logger.info("All tasks for %s stopped", self.name)
+        logger.info("Tasks for %s stopped", self.name)
 
     async def printer_subscriber(self) -> None:
         while True:
@@ -138,9 +136,10 @@ class Printer:
                 async with self.mqtt_client as client:
                     if not self.printer_status_values:
                         await client.publish(
-                            f"device/{self.serial}/request",
+                            self.request_topic,
                             '{"pushing": { "sequence_id": 1, "command": "pushall"}, "user_id":"1234567890"}',
                         )
+                        logger.info("Requested full push")
 
                     await client.subscribe(f"device/{self.serial}/report")
                     async for message in client.messages:
@@ -154,13 +153,28 @@ class Printer:
                                 )
                                 continue
                             payload = json.loads(message.payload)
-                            self.printer_status_values = dict(
-                                self.printer_status_values, **payload["print"]
+                            logger.info(
+                                "Received from %s %s %s", self.name, self.model, payload
                             )
+
+                            if self.printer_status_values is None:
+                                self.printer_status_values = {}
+
+                            if print_payload := payload.get("print"):
+                                self.printer_status_values.update(print_payload)
+                            elif system_payload := payload.get("print"):
+                                if led_status := system_payload.get("led_mode"):
+                                    if (
+                                        len(self.printer_status_values["lights_report"])
+                                        == 1
+                                    ):
+                                        self.printer_status_values["lights_report"][
+                                            "mode"
+                                        ] = led_status
 
                             client_payload = {
                                 "type": "printer_status",
-                                "data": self.printer_status_values,
+                                "data": json.dumps(self.printer_status_values),
                             }
                             for callback in self.subscribers.values():
                                 await callback(client_payload)
@@ -185,6 +199,15 @@ class Printer:
         finally:
             del self.subscribers[uuid]
             await self.stop()
+
+    async def set_light(self, status: bool) -> None:
+        mode = "on" if status else "off"
+        if self.mqtt_client:
+            await self.mqtt_client.publish(
+                self.request_topic, json.dumps({"system": {"led_mode": mode}})
+            )
+        else:
+            raise ConnectionError("Printer not connected")
 
 
 def parse_printers_from_env() -> dict[str, Printer]:

@@ -25,8 +25,12 @@ async def printer_websocket(websocket: WebSocket, printer_id: str):
     async with printer.client(socket_callback):
         try:
             while True:
-                data = await websocket.receive_text()
-                logger.debug("Received: %s", data)
+                data = await websocket.receive_json()
+                logger.info("Received: %s", data)
+
+                if data.get("type") == "chamber_light":
+                    await printer.set_light(data.get("data"))
+
         except WebSocketDisconnect:
             pass
         except Exception as e:
