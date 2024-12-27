@@ -33,6 +33,7 @@ class Printer:
     username: str = "bblp"
     port: int = 8883
 
+    full_push: bool = False
     latest_image: bytes | None = None
 
     def __init__(
@@ -76,6 +77,7 @@ class Printer:
             logger.info("Created new task for %s", self.name)
 
             def on_done(task):
+                self.full_push = False
                 try:
                     task.result()
                 except asyncio.CancelledError:
@@ -127,6 +129,14 @@ class Printer:
 
         logger.info("Tasks for %s stopped", self.name)
 
+    async def request_full_push(self) -> None:
+        if not self.full_push and self.mqtt_client is not None:
+            await self.mqtt_client.publish(
+                self.request_topic,
+                '{"pushing": { "sequence_id": 0, "command": "pushall"}, "user_id":"1234567890"}',
+            )
+            logger.info("Requested full push")
+
     async def printer_subscriber(self) -> None:
         while True:
             if self.mqtt_client is None:
@@ -134,13 +144,7 @@ class Printer:
                 continue
             try:
                 async with self.mqtt_client as client:
-                    if not self.printer_status_values:
-                        await client.publish(
-                            self.request_topic,
-                            '{"pushing": { "sequence_id": 1, "command": "pushall"}, "user_id":"1234567890"}',
-                        )
-                        logger.info("Requested full push")
-
+                    await self.request_full_push()
                     await client.subscribe(f"device/{self.serial}/report")
                     async for message in client.messages:
                         try:
@@ -162,6 +166,9 @@ class Printer:
 
                             if print_payload := payload.get("print"):
                                 self.printer_status_values.update(print_payload)
+                                if print_payload.get("msg") == 0:
+                                    self.full_push = True
+
                             elif system_payload := payload.get("print"):
                                 if led_status := system_payload.get("led_mode"):
                                     if (
@@ -178,6 +185,7 @@ class Printer:
                             }
                             for callback in self.subscribers.values():
                                 await callback(client_payload)
+                            await self.request_full_push()
 
                         except KeyError:
                             logger.error(
