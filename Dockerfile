@@ -3,7 +3,7 @@ WORKDIR /code
 COPY package.json package-lock.json ./
 RUN npm install
 
-COPY index.html svelte.config.js tsconfig.app.json tsconfig.json tsconfig.node.json vite.config.ts ./
+COPY index.html svelte.config.js tsconfig.app.json tsconfig.json tsconfig.node.json vite.config.ts postcss.config.js tailwind.config.ts components.json ./
 COPY public/ public/ 
 COPY frontend/ frontend/
 
