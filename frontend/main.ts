@@ -7,7 +7,7 @@ const app = mount(App, {
     target: document.getElementById("app")!,
 });
 
-if (window.isSecureContext) {
+if (!window.isSecureContext) {
     window.crypto.randomUUID = () => {
         return uuid4();
     };
