@@ -14,19 +14,26 @@
     import { CirclePlay } from "lucide-svelte";
     import { CircleStop } from "lucide-svelte";
     import { Lightbulb } from "lucide-svelte";
+    import { Cctv } from "lucide-svelte";
     import { CircleGauge, Activity } from "lucide-svelte";
     import { File, Layers, Clock, Thermometer } from "lucide-svelte";
     import type { PrinterStatus } from "./printerModel";
+    import { toast } from "svelte-sonner";
 
     import { Label } from "$lib/components/ui/label/index.js";
     import { Switch } from "$lib/components/ui/switch/index.js";
-    import { Logger } from "@dvcol/svelte-simple-router";
+    import { ChevronsLeftRightEllipsis } from "lucide-svelte";
 
     const speedModes = ["Silent", "Standard", "Sport", "Ludicrous"];
 
     const { route, location, routing } = useRoute();
     const queryParams = $derived(location.query);
     const printerId = queryParams["printerId"];
+
+    let printerStatusPulse = $state(false);
+    let printerSignOfLife = $state(false);
+    let imagePulse = $state(false);
+    let imageSignOfLife = $state(false);
 
     let imageUrl = $state<string | null>(null);
     let ws = $state<WebSocket | null>(null);
@@ -50,6 +57,7 @@
             reconnectAttempts = 0; // Reset on successful message
             const message = JSON.parse(event.data);
             if (message.type === "jpeg_image") {
+                printerSignOfLife = true;
                 const binaryData = atob(message.data);
                 const bytes = new Uint8Array(binaryData.length);
                 for (let i = 0; i < binaryData.length; i++) {
@@ -61,9 +69,17 @@
                     URL.revokeObjectURL(imageUrl);
                 }
                 imageUrl = URL.createObjectURL(blob);
+                imagePulse = true;
+                setTimeout(() => (imagePulse = false), 500);
             } else if (message.type === "printer_status") {
+                imageSignOfLife = true;
                 printerStatus = JSON.parse(message.data) as PrinterStatus;
                 printerLightOn = printerStatus?.lights_report?.[0]?.mode === "on";
+
+                printerStatusPulse = true;
+                setTimeout(() => (printerStatusPulse = false), 500);
+            } else if (message.type === "error") {
+                toast(message.data.message);
             }
         };
 
@@ -74,6 +90,8 @@
 
         ws.onclose = (event) => {
             isConnecting = false;
+            printerSignOfLife = false;
+            imageSignOfLife = false;
             if (event.code === 4004) {
                 connectionError = "Invalid printer name";
                 return;
@@ -179,6 +197,13 @@
     <div class="flex flex-col space-y-4 md:col-span-2">
         <div class="flex items-center justify-between">
             <h1 class="text-2xl font-bold">{printerId}</h1>
+            <div class="flex items-center space-x-4">
+                <ChevronsLeftRightEllipsis
+                    class={printerStatusPulse ? "animate-ping" : ""}
+                    color={imageSignOfLife ? "green" : "red"}
+                />
+                <Cctv class={imagePulse ? "animate-ping" : ""} color={imageSignOfLife ? "green" : "red"} />
+            </div>
         </div>
         <!-- Move Controls (Upper Right) -->
         <Card class="bg-900">

@@ -26,7 +26,9 @@ async def printer_websocket(websocket: WebSocket, printer_id: str):
         try:
             while True:
                 data = await websocket.receive_json()
-                logger.info("Received: %s", data)
+                logger.info(
+                    "Received from user for %s %s %s", printer.name, printer.model, data
+                )
 
                 if data.get("type") == "chamber_light":
                     await printer.set_light(data.get("data"))

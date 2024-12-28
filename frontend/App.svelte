@@ -5,6 +5,7 @@
     import type { Route, RouterOptions } from "@dvcol/svelte-simple-router/models";
     import Dashboard from "./lib/Dashboard.svelte";
     import Navbar from "./lib/Navbar.svelte";
+    import { Toaster } from "$lib/components/ui/sonner";
 
     const RouteName = {
         Home: "home",
@@ -34,4 +35,5 @@
 </script>
 
 <Navbar />
+<Toaster />
 <RouterView {options} />

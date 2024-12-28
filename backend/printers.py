@@ -86,6 +86,11 @@ class Printer:
                     logger.exception(
                         "Printer subscriber failed for %s: %s", self.name, e
                     )
+                self.printer_subscriber_task = None
+                if self.subscribers:
+                    self.printer_subscriber_task = asyncio.create_task(
+                        self.start_printer_subscriber()
+                    )
 
             self.printer_subscriber_task.add_done_callback(on_done)
 
@@ -129,13 +134,31 @@ class Printer:
 
         logger.info("Tasks for %s stopped", self.name)
 
+    async def callback_all_connected_ws(self, payload: dict[str, Any]) -> None:
+        for callback in self.subscribers.values():
+            await callback(payload)
+
+    async def send_ws_error(self, message: str) -> None:
+        await self.callback_all_connected_ws(
+            {"type": "error", "data": {"message": message}}
+        )
+
+    async def publish_request(self, payload: str) -> None:
+        if self.mqtt_client is not None:
+            try:
+                await self.mqtt_client.publish(self.request_topic, payload)
+            except MqttError:
+                await self.send_ws_error("Printer MQTT Connection Error")
+                logger.error("Cannot send request because MQTT connection faulty")
+        else:
+            logger.error("Cannot send request because client not connected")
+
     async def request_full_push(self) -> None:
-        if not self.full_push and self.mqtt_client is not None:
-            await self.mqtt_client.publish(
-                self.request_topic,
-                '{"pushing": { "sequence_id": 0, "command": "pushall"}, "user_id":"1234567890"}',
+        if not self.full_push:
+            await self.publish_request(
+                '{"pushing": { "sequence_id": 0, "command": "pushall"}, "user_id":"1234567890"}'
             )
-            logger.info("Requested full push")
+            logger.info("Requested full push from %s %s", self.name, self.model)
 
     async def printer_subscriber(self) -> None:
         while True:
@@ -183,8 +206,8 @@ class Printer:
                                 "type": "printer_status",
                                 "data": json.dumps(self.printer_status_values),
                             }
-                            for callback in self.subscribers.values():
-                                await callback(client_payload)
+                            if self.full_push:
+                                await self.callback_all_connected_ws(client_payload)
                             await self.request_full_push()
 
                         except KeyError:
