@@ -1,10 +1,11 @@
 # BambUI
 
+> <span style="color:red;">This software is in a very early stage of development. Please note the liability clause of the AGPL license you agree to when using this program.</span>
+
 A simple and slim UI for LAN mode of Bambu Lab Printers.
 I do not trust Bambu Cloud and wanted an easy way to access my Printer P1S via home VPN.
+I also do not like their Network Plugin for print monitoring, all current solutions including Home Assistant did not fit my needs, so I decided to build my own.
 Currently, only P1S printers are supported. The UI shows a lot of buttons, but all disabled ones are not implemented yet.
-
-> This software is in a very early stage of development. Please note the liability clause of the AGPL license you agree to when using this program.
 
 Features:
 
