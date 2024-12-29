@@ -200,7 +200,7 @@
             <div class="flex items-center space-x-4">
                 <ChevronsLeftRightEllipsis
                     class={printerStatusPulse ? "animate-ping" : ""}
-                    color={imageSignOfLife ? "green" : "red"}
+                    color={printerSignOfLife ? "green" : "red"}
                 />
                 <Cctv class={imagePulse ? "animate-ping" : ""} color={imageSignOfLife ? "green" : "red"} />
             </div>

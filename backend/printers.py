@@ -126,6 +126,11 @@ class Printer:
 
     async def stop(self) -> None:
         if self.subscribers:
+            logger.info(
+                "Not stopping %s %s because printer has connected users",
+                self.name,
+                self.model,
+            )
             return
 
         if self.camera_client is not None:
