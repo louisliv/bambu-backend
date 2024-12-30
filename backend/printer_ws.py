@@ -4,7 +4,7 @@ from .printers import printers
 from logging import getLogger
 from typing import Any
 
-logger = getLogger()
+logger = getLogger(__name__)
 
 router = APIRouter()
 

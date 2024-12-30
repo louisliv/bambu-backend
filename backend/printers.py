@@ -1,7 +1,7 @@
 import os
 import re
 from logging import getLogger
-from bambu_connect.CameraClient import CameraClient
+from .asyncCameraClient import AsyncCameraClient
 from bambu_connect.utils.models import PrinterStatus
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Callable, Coroutine
@@ -14,12 +14,12 @@ import asyncio
 from aiomqtt.client import MqttError, Client as MqttClient
 import json
 
-logger = getLogger()
+logger = getLogger(__name__)
 
 
 class Printer:
     subscribers: dict[str, Callable[[dict[str, Any]], Coroutine[Any, Any, None]]]
-    camera_client: CameraClient | None
+    camera_client: AsyncCameraClient | None
     mqtt_client: MqttClient | None
     printer_status: PrinterStatus | None
     printer_status_values: dict[str, Any]
@@ -62,12 +62,12 @@ class Printer:
             "data": base64.b64encode(image).decode("utf-8"),
         }
 
-    def image_callback(self, image: bytes) -> None:
+    async def image_callback(self, image: bytes) -> None:
         self.latest_image = image
         payload = self.get_image_payload(image)
 
         for callback in self.subscribers.values():
-            asyncio.run(callback(payload))
+            await callback(payload)
 
     async def start_printer_subscriber(self):
         if self.printer_subscriber_task is None or self.printer_subscriber_task.done():
@@ -102,13 +102,13 @@ class Printer:
             return
 
         if self.camera_client is None:
-            self.camera_client = CameraClient(
+            self.camera_client = AsyncCameraClient(
                 hostname=self.ip, access_code=self.access_code
             )
         if self.camera_client is not None:
             if self.latest_image:
                 await callback(self.get_image_payload(self.latest_image))
-            self.camera_client.start_stream(self.image_callback)
+            await self.camera_client.start_stream(self.image_callback)
 
         if self.mqtt_client is None:
             ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
@@ -134,7 +134,7 @@ class Printer:
             return
 
         if self.camera_client is not None:
-            self.camera_client.stop_stream()
+            await self.camera_client.stop_stream()
             self.camera_client = None
 
         logger.info("Tasks for %s stopped", self.name)
