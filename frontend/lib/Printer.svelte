@@ -154,37 +154,42 @@
         <!-- Print Status -->
         <Card class="bg-900">
             <CardContent class="p-4">
-                <div class="flex flex-row items-center space-x-8">
+                <div class="flex flex-row flex-wrap items-center gap-4 md:gap-8">
                     <!-- File Name -->
-                    <div class="flex flex-col items-start">
-                        <span class="text-sm text-gray-400"><File /></span>
-                        <span class="text-sm font-medium">{printerStatus?.gcode_file}</span>
+                    <div class="flex flex-col items-start" title="Current File">
+                        <span class="text-sm text-gray-400" aria-hidden="true"><File /></span>
+                        <span class="text-sm font-medium" role="status">
+                            {printerStatus?.gcode_file || "No file loaded"}
+                        </span>
                     </div>
 
                     <!-- Status -->
-                    <div class="flex flex-col items-start">
-                        <span class="text-sm text-gray-400"><Activity /></span>
-                        <span class="text-sm font-medium">{printerStatus?.print_type}</span>
+                    <div class="flex flex-col items-start" title="Print Status">
+                        <span class="text-sm text-gray-400" aria-hidden="true"><Activity /></span>
+                        <span class="text-sm font-medium" role="status">
+                            {printerStatus?.print_type || "Idle"}
+                        </span>
                     </div>
 
                     <!-- Layer Info -->
-                    <div class="flex flex-col items-start">
-                        <span class="text-sm text-gray-400"><Layers /></span>
-                        <span class="text-sm font-medium"
-                            >{printerStatus?.layer_num}/{printerStatus?.total_layer_num}</span
-                        >
+                    <div class="flex flex-col items-start" title="Layer Progress">
+                        <span class="text-sm text-gray-400" aria-hidden="true"><Layers /></span>
+                        <span class="text-sm font-medium" role="status">
+                            {printerStatus?.layer_num || 0}/{printerStatus?.total_layer_num || 0}
+                        </span>
                     </div>
 
                     <!-- Time Remaining -->
-                    <div class="flex flex-col items-start">
-                        <span class="text-sm text-gray-400"><Clock /></span>
-                        <span class="text-sm font-medium">{printerStatus?.mc_remaining_time}</span>
+                    <div class="flex flex-col items-start" title="Time Remaining">
+                        <span class="text-sm text-gray-400" aria-hidden="true"><Clock /></span>
+                        <span class="text-sm font-medium" role="status">
+                            {printerStatus?.mc_remaining_time || "--"}
+                        </span>
                     </div>
 
-                    <!-- Print Progrss -->
-                    <Progress value={printerStatus?.mc_percent} max={100} />
+                    <!-- Print Progress -->
+                    <Progress value={printerStatus?.mc_percent || 0} max={100} aria-label="Print progress" />
                 </div>
-
                 <div class="mt-4 flex flex-row items-center justify-between space-x-4">
                     <h3 class="text-lg">Status {printerStatus?.print_type} {printerStatus?.mc_percent}%</h3>
                     <Button variant="outline" disabled><CirclePause /></Button>
