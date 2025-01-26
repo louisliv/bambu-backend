@@ -57,7 +57,7 @@
             reconnectAttempts = 0; // Reset on successful message
             const message = JSON.parse(event.data);
             if (message.type === "jpeg_image") {
-                printerSignOfLife = true;
+                imageSignOfLife = true;
                 const binaryData = atob(message.data);
                 const bytes = new Uint8Array(binaryData.length);
                 for (let i = 0; i < binaryData.length; i++) {
@@ -72,7 +72,7 @@
                 imagePulse = true;
                 setTimeout(() => (imagePulse = false), 500);
             } else if (message.type === "printer_status") {
-                imageSignOfLife = true;
+                printerSignOfLife = true;
                 printerStatus = JSON.parse(message.data) as PrinterStatus;
                 printerLightOn = printerStatus?.lights_report?.[0]?.mode === "on";
 
