@@ -30,3 +30,4 @@ dist-ssr
 .ruff_cache
 .mypy_cache
 *.pyc
+env

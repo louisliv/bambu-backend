@@ -1,23 +1,24 @@
 import os
 import re
-from logging import getLogger
-from .asyncCameraClient import AsyncCameraClient
-from bambu_connect.utils.models import PrinterStatus
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Callable, Coroutine
-from typing import Literal, Any
-from pydantic import BaseModel
-from uuid import uuid4
-from .types_ws import WsJpegImage
-from .printer_payload import pushall_command
 import ssl
 import asyncio
-from aiomqtt.client import MqttError, Client as MqttClient
+from logging import getLogger
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Callable, Coroutine, Literal, Any
+from uuid import uuid4
 import json
-from .types_printer import PrinterRequest
-from .types_ws import WsError, WsMessage
-from .printer_ftp import PrinterFileSystemEntry, ftps_connection
+
+from aiomqtt.client import MqttError, Client as MqttClient
+from bambu_connect.utils.models import PrinterStatus
+from pydantic import BaseModel
 from ping3 import ping
+
+from bambu.printers.async_camera_client import AsyncCameraClient
+from bambu.printers.types_ws import WsJpegImage
+from bambu.printers.printer_payload import pushall_command
+from bambu.printers.types_printer import PrinterRequest
+from bambu.printers.types_ws import WsError, WsMessage
+from bambu.printers.printer_ftp import PrinterFileSystemEntry, ftps_connection
 
 logger = getLogger(__name__)
 
@@ -260,7 +261,7 @@ class Printer:
         for callback in self.subscribers.values():
             await self.start(callback)
 
-    async def hanlde_request(self, request: PrinterRequest) -> None:
+    async def handle_request(self, request: PrinterRequest) -> None:
         if request.data.check_idle and not self.is_idle_print:
             logger.info("Printer is not Idle")
             await self.send_ws_error("Printer not Idle")

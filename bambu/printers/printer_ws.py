@@ -1,9 +1,11 @@
-from fastapi import WebSocket, APIRouter
-from starlette.websockets import WebSocketState, WebSocketDisconnect
-from .printers import printers
 from logging import getLogger
 from typing import Any
-from .types_printer import PrinterRequest
+
+from fastapi import WebSocket, APIRouter
+from starlette.websockets import WebSocketState, WebSocketDisconnect
+
+from bambu.printers.printers import printers
+from bambu.printers.types_printer import PrinterRequest
 
 logger = getLogger(__name__)
 
@@ -33,7 +35,7 @@ async def printer_websocket(websocket: WebSocket, printer_id: str):
                     printer.model,
                     str(data)[:120],
                 )
-                await printer.hanlde_request(PrinterRequest.from_printer_json(data))
+                await printer.handle_request(PrinterRequest.from_printer_json(data))
 
         except WebSocketDisconnect:
             pass

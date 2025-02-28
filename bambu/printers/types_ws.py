@@ -1,6 +1,7 @@
-from pydantic import BaseModel
 from typing import Literal
 import base64
+
+from pydantic import BaseModel
 
 
 class WsBaseCommand(BaseModel):

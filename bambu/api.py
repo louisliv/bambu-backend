@@ -1,8 +1,9 @@
-from fastapi import APIRouter
-from .printers import printers
-from pydantic import BaseModel
-from .printers import SupportedPrinters, Printer
 import asyncio
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from bambu.printers.printers import printers
+from bambu.printers.printers import SupportedPrinters, Printer
 
 router = APIRouter()
 

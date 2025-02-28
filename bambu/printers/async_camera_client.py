@@ -1,13 +1,11 @@
 import ssl
-from logging import getLogger
+import logging
 
 import asyncio
 from bambu_connect.CameraClient import CameraClient
 
 
-import logging
-
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,10 @@
-import aioftp
 import ssl
-from typing import Literal, ClassVar
-from pydantic import BaseModel
-from pathlib import PurePosixPath
-
+from typing import Literal, ClassVar, AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from pathlib import PurePosixPath 
+
+from pydantic import BaseModel
+import aioftp
 
 
 class PrinterFileSystemEntry(BaseModel):

@@ -1,15 +1,15 @@
-from pydantic import BaseModel, field_validator
-from typing import Literal, Self, Any, TYPE_CHECKING
-import json
 from abc import abstractmethod
-from . import printer_payload as pl
-from .printer_payload import RAW_COMMAND_TYPE
-from pydantic import Field
-from typing import ClassVar
+from typing import Literal, Self, Any, TYPE_CHECKING, ClassVar
+import json
 from base64 import b64decode
 
+from pydantic import BaseModel, field_validator, Field
+
+from bambu.printers import printer_payload as pl
+from bambu.printers.printer_payload import RAW_COMMAND_TYPE
+
 if TYPE_CHECKING:
-    from .printers import Printer
+    from bambu.printers.printers import Printer
 
 
 class PrinterBaseCommand(BaseModel):
