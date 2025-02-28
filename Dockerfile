@@ -1,41 +1,27 @@
-FROM --platform=$BUILDPLATFORM node:22-slim AS node-builder
-WORKDIR /code
-COPY package.json package-lock.json ./
-RUN npm install
-
-COPY index.html svelte.config.js tsconfig.app.json tsconfig.json tsconfig.node.json vite.config.ts postcss.config.js tailwind.config.ts components.json ./
-COPY public/ public/ 
-COPY frontend/ frontend/
-
-RUN npm run build
-
-
-
 FROM python:3.12-slim AS python-builder
 
 RUN pip install poetry
 
-WORKDIR /code
-COPY poetry.toml pyproject.toml poetry.lock /code/
+WORKDIR /app
+COPY poetry.toml pyproject.toml poetry.lock /app/
 
 RUN poetry install --no-root
 
 
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONDONTWRITEBYTEapp=1
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update -y && apt-get install curl -y
 
-WORKDIR /code
+WORKDIR /app
 
-COPY --from=node-builder /code/dist/ /code/dist/
-COPY --from=python-builder /code/.venv /code/.venv
+COPY --from=python-builder /app/.venv /app/.venv
 
-COPY backend /code/backend
+COPY backend /app/backend
 
-ENV VIRTUAL_ENV=/code/.venv
+ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 EXPOSE 8080
