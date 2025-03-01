@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bambu.printers.printer_ws import router as ws_router
 from bambu.api import router as api_router
+from bambu.models.db import create_db_and_tables, get_session
+from bambu.models.printers import Printer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,6 +20,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 
 @app.get("/healthz")

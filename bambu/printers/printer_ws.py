@@ -4,7 +4,7 @@ from typing import Any
 from fastapi import WebSocket, APIRouter
 from starlette.websockets import WebSocketState, WebSocketDisconnect
 
-from bambu.printers.printers import printers
+from bambu.printers.printers import bambu_printers
 from bambu.printers.types_printer import PrinterRequest
 
 logger = getLogger(__name__)
@@ -14,9 +14,9 @@ router = APIRouter()
 
 @router.websocket("/printer/{printer_id}")
 async def printer_websocket(websocket: WebSocket, printer_id: str):
-    printer = printers.get(printer_id)
+    printer = bambu_printers.get(printer_id)
     if printer is None:
-        await websocket.close(code=4004, reason="Invalid Printer Name")
+        await websocket.close(code=4004, reason="Invalid Printer ID")
         return
 
     await websocket.accept()

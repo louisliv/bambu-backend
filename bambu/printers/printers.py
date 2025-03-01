@@ -10,8 +10,11 @@ import json
 
 from aiomqtt.client import MqttError, Client as MqttClient
 from bambu_connect.utils.models import PrinterStatus
+from fastapi import Depends
 from pydantic import BaseModel
 from ping3 import ping
+
+from sqlmodel import select, Session
 
 from bambu.printers.async_camera_client import AsyncCameraClient
 from bambu.printers.types_ws import WsJpegImage
@@ -20,12 +23,15 @@ from bambu.printers.types_printer import PrinterRequest
 from bambu.printers.types_ws import WsError, WsMessage
 from bambu.printers.printer_ftp import PrinterFileSystemEntry, ftps_connection
 
+from bambu.models.db import get_session, engine
+from bambu.models.printers import Printer
+
 logger = getLogger(__name__)
 
 SupportedPrinters = Literal["P1S", "P1P", "A1", "A1M"]
 
 
-class Printer:
+class BambuPrinter:
     subscribers: dict[str, Callable[[dict[str, Any]], Coroutine[Any, Any, None]]]
     camera_client: AsyncCameraClient | None
     mqtt_client: MqttClient | None
@@ -33,6 +39,7 @@ class Printer:
     printer_status_values: dict[str, Any]
     printer_subscriber_task: asyncio.tasks.Task | None
 
+    id: int
     name: str
     ip: str
     access_code: str
@@ -46,8 +53,15 @@ class Printer:
     latest_image: bytes | None = None
 
     def __init__(
-        self, name: str, ip: str, access_code: str, serial: str, model: Literal["P1S"]
+        self,
+        id: int,
+        name: str,
+        ip: str,
+        access_code: str,
+        serial: str,
+        model: Literal["P1S"]
     ):
+        self.id = id
         self.name = name
         self.ip = ip
         self.serial = serial
@@ -318,21 +332,21 @@ class Printer:
         return bool(ping_response)
 
 
-def parse_printers_from_env() -> dict[str, Printer]:
-    printers_read: dict[str, dict[str, Any]] = {}
-    for key, value in os.environ.items():
-        match = re.match(r"BAMBUI_PRINTER\.([^.]+)\.(IP|ACCESS_CODE|SERIAL|MODEL)", key)
-        if match:
-            name, attribute = match.groups()
-            if name not in printers_read:
-                printers_read[name] = {}
-            printers_read[name][attribute.lower()] = value
+def parse_printers_from_db() -> dict[int, BambuPrinter]:
+    with Session(engine) as session:
+        printers_read = session.exec(select(Printer)).all()
 
-    _printers = {
-        name: Printer(name=name, **details) for name, details in printers_read.items()
-    }
-    logger.info("Printers: %s", ",".join(_printers.keys()))
-    return _printers
+        _printers = {
+            printer.id: BambuPrinter(
+                id=printer.id,
+                name=printer.name,
+                ip=printer.ip,
+                access_code=printer.access_code,
+                serial=printer.serial,
+                model=printer.model,
+            ) for printer in printers_read
+        }
+        return _printers
 
 
-printers = parse_printers_from_env()
+bambu_printers = parse_printers_from_db()

@@ -1,26 +1,49 @@
 import asyncio
-from fastapi import APIRouter
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from bambu.printers.printers import printers
-from bambu.printers.printers import SupportedPrinters, Printer
+from sqlmodel import Session, select
+
+from bambu.models.printers import Printer, PrinterCreate, PrinterResponse
+from bambu.models.db import get_session
+
+from bambu.printers.printers import bambu_printers, BambuPrinter
 
 router = APIRouter()
 
 
-class PrinterResponse(BaseModel):
-    name: str
-    model: SupportedPrinters
-    is_online: bool
-
-
 @router.get("/printers")
-async def get_printers() -> list[PrinterResponse]:
-    async def get_printer_status(printer: Printer) -> PrinterResponse:
+async def get_printers(session: Session = Depends(get_session)) -> list[PrinterResponse]:
+    async def get_printer_status(printer: BambuPrinter) -> PrinterResponse:
         return PrinterResponse(
-            name=printer.name, model=printer.model, is_online=await printer.ping()
+            id=printer.id,
+            name=printer.name,
+            model=printer.model,
+            ip=printer.ip,
+            serial=printer.serial,
+            access_code=printer.access_code,
+            is_online=await printer.ping()
         )
 
-    return await asyncio.gather(
-        *[get_printer_status(printer) for printer in printers.values()]
+    printer_statuses = await asyncio.gather(
+        *[get_printer_status(_printer) for _printer in bambu_printers.values()]
     )
+
+    return printer_statuses
+
+
+@router.post("/printers")
+async def add_printer(printer: PrinterCreate, session: Session = Depends(get_session)) -> Printer:
+    printer = Printer(
+        name=printer.name,
+        model=printer.model,
+        ip=printer.ip,
+        serial=printer.serial,
+        access_code=printer.access_code,
+        is_current=printer.is_current
+    )
+    session.add(printer)
+    session.commit()
+    session.refresh(printer)
+    return printer
